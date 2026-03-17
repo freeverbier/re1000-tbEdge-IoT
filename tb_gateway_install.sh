@@ -31,16 +31,19 @@ Options obligatoires :
   --access-token    TOKEN    Token d'accès du device Gateway dans TB Edge
 
 Options facultatives :
-  --tb-host         HOST     Hôte de l'instance TB Edge locale    [défaut : localhost]
+  --tb-host         HOST     Hôte MQTT de TB Edge                 [défaut : localhost]
   --tb-port         PORT     Port MQTT de TB Edge                 [défaut : 1883]
+  --tb-edge-http    HOST     Hôte HTTP de TB Edge (health check)  [défaut : localhost]
+  --tb-edge-port    PORT     Port HTTP de TB Edge (health check)  [défaut : 8080]
+  --skip-edge-check          Ne pas vérifier si TB Edge répond
   --version         VERSION  Version de l'image TB Gateway        [défaut : 3.9.1]
   --install-dir     PATH     Répertoire d'installation            [défaut : /opt/tb-gateway]
   --gw-name         NAME     Nom du gateway dans TB Edge          [défaut : TB-Gateway-re1000]
   -h, --help                 Affiche cette aide
 
 Variables d'environnement (alternatives aux options CLI) :
-  TB_GW_ACCESS_TOKEN, TB_HOST, TB_PORT, TB_GW_VERSION,
-  INSTALL_DIR, GW_NAME
+  TB_GW_ACCESS_TOKEN, TB_HOST, TB_PORT, TB_EDGE_HTTP_HOST, TB_EDGE_HTTP_PORT,
+  TB_GW_VERSION, INSTALL_DIR, GW_NAME
 
 Exemples :
   # Passage par arguments CLI
@@ -73,6 +76,10 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/tb-gateway}"
 TB_GW_ACCESS_TOKEN="${TB_GW_ACCESS_TOKEN:-}"
 TB_HOST="${TB_HOST:-localhost}"
 TB_PORT="${TB_PORT:-1883}"
+# Hôte/port HTTP pour le health check TB Edge (séparé du host MQTT)
+TB_EDGE_HTTP_HOST="${TB_EDGE_HTTP_HOST:-localhost}"
+TB_EDGE_HTTP_PORT="${TB_EDGE_HTTP_PORT:-8080}"
+SKIP_EDGE_CHECK="${SKIP_EDGE_CHECK:-false}"
 GW_NAME="${GW_NAME:-TB-Gateway-re1000}"
 
 # =============================================================================
@@ -80,12 +87,15 @@ GW_NAME="${GW_NAME:-TB-Gateway-re1000}"
 # =============================================================================
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --access-token)  TB_GW_ACCESS_TOKEN="$2"; shift 2 ;;
-        --tb-host)       TB_HOST="$2";             shift 2 ;;
-        --tb-port)       TB_PORT="$2";             shift 2 ;;
-        --version)       TB_GW_VERSION="$2";       shift 2 ;;
-        --install-dir)   INSTALL_DIR="$2";         shift 2 ;;
-        --gw-name)       GW_NAME="$2";             shift 2 ;;
+        --access-token)   TB_GW_ACCESS_TOKEN="$2";  shift 2 ;;
+        --tb-host)        TB_HOST="$2";             shift 2 ;;
+        --tb-port)        TB_PORT="$2";             shift 2 ;;
+        --tb-edge-http)   TB_EDGE_HTTP_HOST="$2";   shift 2 ;;
+        --tb-edge-port)   TB_EDGE_HTTP_PORT="$2";   shift 2 ;;
+        --skip-edge-check) SKIP_EDGE_CHECK="true";  shift   ;;
+        --version)        TB_GW_VERSION="$2";       shift 2 ;;
+        --install-dir)    INSTALL_DIR="$2";         shift 2 ;;
+        --gw-name)        GW_NAME="$2";             shift 2 ;;
         -h|--help)       usage ;;
         *)               error "Option inconnue : $1. Utilisez --help pour la liste des options." ;;
     esac
@@ -116,13 +126,20 @@ section "Vérification de l'environnement"
 command -v docker &>/dev/null || error "Docker n'est pas installé. Exécutez d'abord tb_edge_install.sh."
 
 # Vérifier que TB Edge est accessible
-if ! curl -sf "http://${TB_HOST}:8080/api/v1/noauth/featureFlags" &>/dev/null; then
-    warn "TB Edge ne répond pas sur http://${TB_HOST}:8080."
-    warn "Assurez-vous que TB Edge est démarré avant de continuer."
-    read -rp "Continuer quand même ? [o/N] " r
-    [[ "$r" != "o" ]] && exit 1
+# On teste le port HTTP (TCP) et on accepte tout code HTTP (200, 302, 401 = TB Edge répond)
+if [[ "$SKIP_EDGE_CHECK" == "true" ]]; then
+    warn "Vérification TB Edge ignorée (--skip-edge-check)."
 else
-    info "TB Edge accessible sur http://${TB_HOST}:8080 ✓"
+    TB_EDGE_URL="http://${TB_EDGE_HTTP_HOST}:${TB_EDGE_HTTP_PORT}/login"
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "$TB_EDGE_URL" 2>/dev/null || echo "000")
+    if [[ "$HTTP_CODE" == "000" ]]; then
+        warn "TB Edge ne répond pas sur http://${TB_EDGE_HTTP_HOST}:${TB_EDGE_HTTP_PORT} (port fermé ou service non démarré)."
+        warn "Si TB Edge est bien démarré, relancez avec --skip-edge-check pour ignorer cette vérification."
+        read -rp "Continuer quand même ? [o/N] " r
+        [[ "$r" != "o" ]] && exit 1
+    else
+        info "TB Edge accessible sur http://${TB_EDGE_HTTP_HOST}:${TB_EDGE_HTTP_PORT} (HTTP $HTTP_CODE) ✓"
+    fi
 fi
 
 ARCH=$(uname -m)
