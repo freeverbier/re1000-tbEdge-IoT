@@ -36,7 +36,7 @@ Options facultatives :
   --tb-edge-http    HOST     Hôte HTTP de TB Edge (health check)  [défaut : localhost]
   --tb-edge-port    PORT     Port HTTP de TB Edge (health check)  [défaut : 8080]
   --skip-edge-check          Ne pas vérifier si TB Edge répond
-  --version         VERSION  Version de l'image TB Gateway        [défaut : 3.9.1]
+  --version         VERSION  Version de l'image TB Gateway        [défaut : 3.8.1]
   --install-dir     PATH     Répertoire d'installation            [défaut : /opt/tb-gateway]
   --gw-name         NAME     Nom du gateway dans TB Edge          [défaut : TB-Gateway-re1000]
   -h, --help                 Affiche cette aide
@@ -71,7 +71,7 @@ EOF
 # =============================================================================
 # VALEURS PAR DÉFAUT
 # =============================================================================
-TB_GW_VERSION="${TB_GW_VERSION:-3.9.1}"
+TB_GW_VERSION="${TB_GW_VERSION:-3.8.1}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/tb-gateway}"
 TB_GW_ACCESS_TOKEN="${TB_GW_ACCESS_TOKEN:-}"
 TB_HOST="${TB_HOST:-localhost}"
