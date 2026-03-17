@@ -199,6 +199,44 @@ sysctl -w vm.overcommit_memory=1 > /dev/null
 echo "vm.overcommit_memory=1" >> /etc/sysctl.d/99-tb-edge.conf
 
 # =============================================================================
+# 4b. GESTION DE L'ESPACE DISQUE (critique sur eMMC 16 GB)
+# =============================================================================
+section "Optimisation de l'espace disque"
+
+# Nettoyer le cache APT (libère ~500 MB après l'install)
+apt-get clean
+apt-get autoremove -y -qq
+info "Cache APT nettoyé ✓"
+
+# Plafonner les logs journald à 100 MB (sans limite ils croissent indéfiniment)
+mkdir -p /etc/systemd/journald.conf.d/
+cat > /etc/systemd/journald.conf.d/size.conf <<'JOURNALD'
+[Journal]
+SystemMaxUse=100M
+RuntimeMaxUse=50M
+JOURNALD
+journalctl --vacuum-size=100M > /dev/null 2>&1 || true
+systemctl restart systemd-journald
+info "Logs journald plafonnés à 100 MB ✓"
+
+# Limiter les logs Docker à 20 MB × 3 fichiers par container
+# (appliqué avant le pull des images pour couvrir tous les containers)
+cat > /etc/docker/daemon.json <<'DOCKERD'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "20m",
+    "max-file": "3"
+  }
+}
+DOCKERD
+# Recharger Docker si déjà en cours (sinon sera pris en compte au démarrage)
+if systemctl is-active --quiet docker; then
+    systemctl reload-or-restart docker
+fi
+info "Logs Docker plafonnés à 20 MB × 3 par container ✓"
+
+# =============================================================================
 # 5. CRÉATION DU RÉPERTOIRE D'INSTALLATION
 # =============================================================================
 section "Création du répertoire $INSTALL_DIR"
