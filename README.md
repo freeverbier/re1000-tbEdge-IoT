@@ -151,26 +151,122 @@ systemctl status tb-edge
 
 ## 2. TB IoT Gateway — `tb_gateway_install.sh`
 
-> Voir le script `tb_gateway_install.sh` et sa documentation intégrée pour les détails complets.
+TB IoT Gateway s'installe en complément de TB Edge sur le même reTerminal DM. Il est déployé en Docker avec `network_mode: host` et `privileged: true` pour accéder aux interfaces hardware (BLE, CAN, ports série).
 
-TB IoT Gateway s'installe en complément de TB Edge sur le même reTerminal DM. Il est déployé en Docker et se connecte automatiquement à l'instance Edge locale via MQTT.
+### Ce que fait le script
 
-### Connecteurs inclus dans l'image officielle
+1. **Valide les paramètres** — vérifie que l'Access Token est fourni
+2. **Vérifie que TB Edge répond** — sonde l'API REST avant de continuer
+3. **Crée la structure de répertoires** dans le répertoire d'installation : `config/`, `extensions/`, `logs/`
+4. **Génère `tb_gateway.yaml`** — configuration principale avec tous les connecteurs activés
+5. **Génère les fichiers JSON** de configuration pour chaque connecteur (exemples commentés)
+6. **Génère un exemple de connecteur Python** dans `extensions/custom/`
+7. **Crée le `docker-compose.yml`** et pull l'image officielle
+8. **Crée un service systemd `tb-gateway`** — démarrage après `tb-edge.service`
 
-| Connecteur | Usage typique |
-|-----------|---------------|
-| MQTT | Broker MQTT local ou externe |
-| OPC-UA | Automates industriels, SCADA |
-| Modbus RTU/TCP | PLC, compteurs, capteurs industriels |
-| BACnet | Systèmes de gestion de bâtiment (GTB) |
-| BLE | Capteurs Bluetooth Low Energy |
-| CAN Bus | Systèmes embarqués, véhicules |
-| Serial (RS232/RS485) | Équipements série legacy |
-| REST API | Intégration HTTP/HTTPS |
-| SNMP | Équipements réseau, UPS |
-| FTP | Transfert de fichiers de données |
-| Socket (TCP/UDP) | Protocoles propriétaires |
-| Custom (Python) | Connecteurs sur mesure |
+### Prérequis
+
+- **TB Edge PE opérationnel** (installé via `tb_edge_install.sh`)
+- Un **device de type Gateway** créé dans TB Edge, avec son **Access Token**
+
+> Dans TB Edge : *Entities → Devices → + Add device → cocher "Is gateway"* puis récupérer le token dans *Manage credentials*.
+
+### Paramètres du script
+
+#### Option obligatoire
+
+| Option CLI | Variable d'env | Description |
+|-----------|----------------|-------------|
+| `--access-token TOKEN` | `TB_GW_ACCESS_TOKEN` | Access Token du device Gateway créé dans TB Edge |
+
+#### Options facultatives
+
+| Option CLI | Variable d'env | Défaut | Description |
+|-----------|----------------|--------|-------------|
+| `--tb-host HOST` | `TB_HOST` | `localhost` | Hôte de l'instance TB Edge (MQTT) |
+| `--tb-port PORT` | `TB_PORT` | `1883` | Port MQTT de TB Edge |
+| `--version VERSION` | `TB_GW_VERSION` | `3.9.1` | Tag de l'image Docker TB Gateway |
+| `--install-dir PATH` | `INSTALL_DIR` | `/opt/tb-gateway` | Répertoire d'installation |
+| `--gw-name NAME` | `GW_NAME` | `TB-Gateway-re1000` | Nom affiché dans TB Edge |
+
+### Utilisation
+
+```bash
+# Cas minimal — TB Edge local sur le même appareil
+sudo bash tb_gateway_install.sh \
+  --access-token "votre-access-token-gateway"
+
+# Avec TB Edge sur un hôte différent
+sudo bash tb_gateway_install.sh \
+  --access-token "votre-access-token-gateway" \
+  --tb-host "192.168.1.100"
+
+# Via variables d'environnement
+export TB_GW_ACCESS_TOKEN="votre-access-token-gateway"
+sudo -E bash tb_gateway_install.sh
+```
+
+### Connecteurs configurés
+
+Tous les connecteurs officiels sont activés et livrés avec un fichier JSON d'exemple à adapter :
+
+| Connecteur | Fichier de config | Usage typique |
+|-----------|-------------------|---------------|
+| MQTT | `config/mqtt.json` | Broker MQTT local ou externe |
+| Modbus TCP | `config/modbus.json` | PLC, compteurs, capteurs industriels |
+| OPC-UA | `config/opcua.json` | Automates industriels, SCADA |
+| BACnet | `config/bacnet.json` | Systèmes de gestion de bâtiment (GTB) |
+| BLE | `config/ble.json` | Capteurs Bluetooth Low Energy |
+| Serial RS232/RS485 | `config/serial.json` | Équipements série legacy |
+| REST API | `config/rest.json` | Intégration HTTP/HTTPS |
+| SNMP | `config/snmp.json` | Équipements réseau, UPS |
+| FTP | `config/ftp.json` | Transfert de fichiers de données |
+| Socket TCP/UDP | `config/socket.json` | Protocoles propriétaires |
+| CAN Bus | `config/can.json` | Systèmes embarqués, véhicules |
+| Custom Python | `extensions/custom/` | Connecteurs sur mesure |
+
+Pour activer uniquement certains connecteurs, commenter les entrées correspondantes dans `tb_gateway.yaml`.
+
+### Structure du répertoire d'installation
+
+```
+/opt/tb-gateway/
+├── docker-compose.yml
+├── config/
+│   ├── tb_gateway.yaml     ← Configuration principale
+│   ├── mqtt.json
+│   ├── modbus.json
+│   ├── opcua.json
+│   ├── bacnet.json
+│   ├── ble.json
+│   ├── serial.json
+│   ├── rest.json
+│   ├── snmp.json
+│   ├── ftp.json
+│   ├── socket.json
+│   ├── can.json
+│   └── custom.json
+├── extensions/
+│   └── custom/
+│       └── custom_connector.py   ← Exemple de connecteur Python
+└── logs/
+```
+
+### Commandes utiles
+
+```bash
+# Voir les logs du gateway
+docker compose -C /opt/tb-gateway logs -f tb-gateway
+
+# Redémarrer après modification d'un fichier de config
+systemctl restart tb-gateway
+
+# Arrêter le gateway
+systemctl stop tb-gateway
+
+# État du service
+systemctl status tb-gateway
+```
 
 ---
 
